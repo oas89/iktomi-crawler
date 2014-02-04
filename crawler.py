@@ -1,3 +1,4 @@
+import re
 import sys
 import logging
 import urlparse
@@ -16,19 +17,17 @@ from iktomi.utils.storage import VersionedStorage
 __all__ = ['Crawler']
 
 
-logging.basicConfig(level=logging.CRITICAL)
-
-
 class String(unicode):
     parent = ''
 
 
 class CrawlingManager(object):
 
-    def __init__(self, app, env_class):
+    def __init__(self, app, env_class, fast=True):
         self.app = app
         self.root = Reverse.from_handler(app)
         self.env_class = env_class
+        self.fast = fast
 
         self._manager = multiprocessing.Manager()
         self._pending = self._manager.JoinableQueue()
@@ -50,6 +49,8 @@ class CrawlingManager(object):
                 urls = [urls]
             for url in urls:
                 if url not in self._visited:
+                    if self.fast:
+                        url = re.sub(r'\d+', '{}', url)
                     self._visited[url] = None
                     self._pending.put(url)
 
@@ -118,12 +119,16 @@ class Crawler(Cli):
         self.app = app
         self.env_class = env_class
 
-    def command_run(self, url=None, worker_count=None):
+    def command_run(self, fast=False, url=None, worker_count=None):
+        logging.basicConfig(level=logging.CRITICAL)
+        logging.disable(logging.CRITICAL)
+        
+        fast = bool(fast)
         url = url or '/'
         worker_count = worker_count or 2 * multiprocessing.cpu_count()
         print 'Crawling using %s worker(s) starting from %s' % (worker_count, url)
 
-        manager = CrawlingManager(self.app, self.env_class)
+        manager = CrawlingManager(self.app, self.env_class, fast=fast)
 
         workers = [Worker(manager) for i in range(worker_count)]
 
